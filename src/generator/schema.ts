@@ -50,8 +50,22 @@ function emitObjectExpr(node: Extract<SchemaNode, { kind: "object" }>): string {
       : JSON.stringify(f.jsName);
     return `${key}: ${emitNodeExpr(f.node)}`;
   });
-  const obj = `z.object({\n${entries.map((e) => `  ${e}`).join(",\n")}\n})`;
-  return node.extends ? `${node.extends}.extend({\n${entries.map((e) => `  ${e}`).join(",\n")}\n})` : obj;
+  const base = node.extends
+    ? `${node.extends}.extend({\n${entries.map((e) => `  ${e}`).join(",\n")}\n})`
+    : `z.object({\n${entries.map((e) => `  ${e}`).join(",\n")}\n})`;
+
+  const groups = Object.entries(node.choiceGroups);
+  if (groups.length === 0) return base;
+
+  const checks = groups.map(([, members], i) => {
+    const list = members.map((m) => JSON.stringify(m)).join(", ");
+    const varName = `_g${i}`;
+    return [
+      `  const ${varName} = [${list}].filter((k) => (data as Record<string, unknown>)[k] !== undefined);`,
+      `  if (${varName}.length !== 1) ctx.addIssue({ code: z.ZodIssueCode.custom, message: \`Exactly one of [${members.join(", ")}] must be present\` });`,
+    ].join("\n");
+  });
+  return `${base}.superRefine((data, ctx) => {\n${checks.join("\n")}\n})`;
 }
 
 // ---------------------------------------------------------------------------

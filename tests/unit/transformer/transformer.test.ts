@@ -301,4 +301,104 @@ describe("transformer", () => {
       expect(warnings.some((w) => w.code === "UNRESOLVED_TYPE_REF")).toBe(true);
     });
   });
+
+  describe("xs:group inlining", () => {
+    it("inlines xs:group elements into the containing sequence", () => {
+      const xsd = wrap(`
+        <xs:group name="NameGroup">
+          <xs:sequence>
+            <xs:element name="first-name" type="xs:string"/>
+            <xs:element name="last-name"  type="xs:string"/>
+          </xs:sequence>
+        </xs:group>
+        <xs:complexType name="Person">
+          <xs:sequence>
+            <xs:group ref="NameGroup"/>
+            <xs:element name="email" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+      `);
+      const { declarations, warnings } = run(xsd);
+      expect(warnings.filter((w) => w.code === "UNSUPPORTED_CONSTRUCT")).toHaveLength(0);
+      const personDecl = declarations.find((d) => d.jsName === "PersonSchema");
+      expect(personDecl).toBeDefined();
+      if (personDecl!.node.kind === "object") {
+        const names = personDecl!.node.fields.map((f) => f.jsName);
+        expect(names).toContain("firstName");
+        expect(names).toContain("lastName");
+        expect(names).toContain("email");
+      }
+    });
+
+    it("emits UNSUPPORTED_CONSTRUCT for missing xs:group ref", () => {
+      const xsd = wrap(`
+        <xs:complexType name="T">
+          <xs:sequence>
+            <xs:group ref="MissingGroup"/>
+          </xs:sequence>
+        </xs:complexType>
+      `);
+      const { warnings } = run(xsd);
+      expect(warnings.some((w) => w.code === "UNSUPPORTED_CONSTRUCT")).toBe(true);
+    });
+  });
+
+  describe("xs:attributeGroup inlining", () => {
+    it("inlines xs:attributeGroup attributes into the containing type", () => {
+      const xsd = wrap(`
+        <xs:attributeGroup name="CommonAttributes">
+          <xs:attribute name="id"   type="xs:string" use="required"/>
+          <xs:attribute name="lang" type="xs:string"/>
+        </xs:attributeGroup>
+        <xs:complexType name="T">
+          <xs:sequence>
+            <xs:element name="value" type="xs:string"/>
+          </xs:sequence>
+          <xs:attributeGroup ref="CommonAttributes"/>
+        </xs:complexType>
+      `);
+      const { declarations, warnings } = run(xsd);
+      expect(warnings.filter((w) => w.code === "UNSUPPORTED_CONSTRUCT")).toHaveLength(0);
+      const decl = declarations.find((d) => d.jsName === "TSchema");
+      if (decl!.node.kind === "object") {
+        const names = decl!.node.fields.map((f) => f.jsName);
+        expect(names).toContain("value");
+        expect(names).toContain("id");
+        expect(names).toContain("lang");
+        // id is required, lang is optional
+        const idField = decl!.node.fields.find((f) => f.jsName === "id");
+        const langField = decl!.node.fields.find((f) => f.jsName === "lang");
+        expect(idField!.node.optional).toBeFalsy();
+        expect(langField!.node.optional).toBe(true);
+      }
+    });
+  });
+
+  describe("xs:extension", () => {
+    it("emits an object node with extends set to the base schema name", () => {
+      const xsd = wrap(`
+        <xs:complexType name="Animal">
+          <xs:sequence>
+            <xs:element name="name" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+        <xs:complexType name="Dog">
+          <xs:complexContent>
+            <xs:extension base="Animal">
+              <xs:sequence>
+                <xs:element name="breed" type="xs:string"/>
+              </xs:sequence>
+            </xs:extension>
+          </xs:complexContent>
+        </xs:complexType>
+      `);
+      const { declarations } = run(xsd);
+      const dogDecl = declarations.find((d) => d.jsName === "DogSchema");
+      expect(dogDecl).toBeDefined();
+      if (dogDecl!.node.kind === "object") {
+        expect(dogDecl!.node.extends).toBe("AnimalSchema");
+        expect(dogDecl!.node.fields.find((f) => f.jsName === "breed")).toBeDefined();
+      }
+    });
+  });
 });

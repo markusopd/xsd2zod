@@ -66,6 +66,9 @@ export interface XmlTypeMeta<_T extends ZodTypeAny = ZodTypeAny> {
   /** Maps choice group ID → mutually exclusive JS field names */
   choiceGroups?: Record<string, string[]>;
 
+  /** XML name of the base type when this type extends another (xs:extension) */
+  extends?: string;
+
   /** True when the XSD type is abstract="true" */
   abstract?: boolean;
 

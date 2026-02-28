@@ -36,6 +36,8 @@ function buildObjectMeta(node: ObjectNode, xmlName: string): XmlTypeMeta {
   if (Object.keys(node.choiceGroups).length > 0) {
     meta.choiceGroups = node.choiceGroups;
   }
+  // Strip "Schema" suffix to recover the XML type name
+  if (node.extends) meta.extends = node.extends.replace(/Schema$/, "");
   if (node.abstract) meta.abstract = true;
   if (node.mixed) meta.mixed = true;
   return meta;
@@ -45,6 +47,7 @@ function emitTypeMeta(meta: XmlTypeMeta): string {
   const lines: string[] = [];
   lines.push(`  xmlName: ${JSON.stringify(meta.xmlName)},`);
   if (meta.namespace !== undefined) lines.push(`  namespace: ${JSON.stringify(meta.namespace)},`);
+  if (meta.extends !== undefined) lines.push(`  extends: ${JSON.stringify(meta.extends)},`);
   lines.push(`  compositor: ${JSON.stringify(meta.compositor)},`);
 
   // Fields

@@ -160,6 +160,47 @@ describe("full pipeline", () => {
     expect(code).toContain("b: z.string().optional()");
   });
 
+  describe("xs:choice superRefine", () => {
+    it("emits superRefine for choice groups", () => {
+      const { code } = xsd2zod(wrap(`
+        <xs:complexType name="T">
+          <xs:sequence>
+            <xs:choice>
+              <xs:element name="a" type="xs:string"/>
+              <xs:element name="b" type="xs:integer"/>
+            </xs:choice>
+          </xs:sequence>
+        </xs:complexType>
+      `));
+      expect(code).toContain("superRefine");
+      expect(code).toContain("ZodIssueCode.custom");
+      expect(code).toContain("Exactly one of");
+    });
+  });
+
+  describe("xs:extension metadata", () => {
+    it("emits extends in XmlMeta for extended type", () => {
+      const { code } = xsd2zod(wrap(`
+        <xs:complexType name="Animal">
+          <xs:sequence>
+            <xs:element name="name" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+        <xs:complexType name="Dog">
+          <xs:complexContent>
+            <xs:extension base="Animal">
+              <xs:sequence>
+                <xs:element name="breed" type="xs:string"/>
+              </xs:sequence>
+            </xs:extension>
+          </xs:complexContent>
+        </xs:complexType>
+      `));
+      expect(code).toContain("AnimalSchema.extend(");
+      expect(code).toContain('extends: "Animal"');
+    });
+  });
+
   describe("fixture files", () => {
     it("processes sequence.xsd without warnings", async () => {
       const xsd = await fixture("complex-types", "sequence.xsd");
@@ -190,6 +231,35 @@ describe("full pipeline", () => {
       expect(warnings).toHaveLength(0);
       expect(code).toContain("choiceGroups");
       expect(code).toContain("PaymentSchema");
+    });
+
+    it("processes groups.xsd without UNSUPPORTED_CONSTRUCT warnings", async () => {
+      const xsd = await readFile(
+        join(import.meta.dirname, "../fixtures/groups.xsd"),
+        "utf-8"
+      );
+      const { code, warnings } = xsd2zod(xsd);
+      expect(warnings.filter((w) => w.code === "UNSUPPORTED_CONSTRUCT")).toHaveLength(0);
+      expect(code).toContain("PersonSchema");
+      expect(code).toContain("firstName");
+      expect(code).toContain("lastName");
+      expect(code).toContain("email");
+      // attributeGroup fields
+      expect(code).toContain("id:");
+      expect(code).toContain("lang:");
+    });
+
+    it("processes extension.xsd with extends in meta", async () => {
+      const xsd = await readFile(
+        join(import.meta.dirname, "../fixtures/extension.xsd"),
+        "utf-8"
+      );
+      const { code, warnings } = xsd2zod(xsd);
+      expect(warnings).toHaveLength(0);
+      expect(code).toContain("AnimalSchema.extend(");
+      expect(code).toContain("DogSchema");
+      expect(code).toContain('extends: "Animal"');
+      expect(code).toContain('extends: "Dog"');
     });
   });
 });

@@ -61,11 +61,14 @@ export interface XsdComplexType {
   compositor: "sequence" | "all" | "choice" | "none";
   children: XsdCompositorChild[];
   attributes: XsdAttribute[];
+  /** xs:attributeGroup references at the complexType level */
+  attributeGroupRefs?: string[];
   /** For xs:extension */
   extension?: {
     base: string;
     children: XsdCompositorChild[];
     attributes: XsdAttribute[];
+    attributeGroupRefs?: string[];
     compositor: "sequence" | "all" | "choice" | "none";
   };
   /** For xs:simpleContent with xs:extension */
@@ -75,6 +78,21 @@ export interface XsdComplexType {
   };
   mixed: boolean;
   abstract: boolean;
+}
+
+/** A top-level xs:group definition (reusable element group) */
+export interface XsdNamedGroup {
+  name: string;
+  compositor: "sequence" | "all" | "choice" | "none";
+  children: XsdCompositorChild[];
+}
+
+/** A top-level xs:attributeGroup definition */
+export interface XsdAttributeGroup {
+  name: string;
+  attributes: XsdAttribute[];
+  /** Nested xs:attributeGroup references */
+  attributeGroupRefs: string[];
 }
 
 export interface XsdSchema {
@@ -87,4 +105,8 @@ export interface XsdSchema {
   complexTypes: XsdComplexType[];
   /** Top-level xs:simpleType declarations */
   simpleTypes: XsdSimpleType[];
+  /** Top-level xs:group definitions */
+  groups: XsdNamedGroup[];
+  /** Top-level xs:attributeGroup definitions */
+  attributeGroups: XsdAttributeGroup[];
 }

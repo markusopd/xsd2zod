@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <!-- Reusable element group -->
+  <xs:group name="NameGroup">
+    <xs:sequence>
+      <xs:element name="first-name" type="xs:string"/>
+      <xs:element name="last-name"  type="xs:string"/>
+    </xs:sequence>
+  </xs:group>
+
+  <!-- Reusable attribute group -->
+  <xs:attributeGroup name="CommonAttributes">
+    <xs:attribute name="id"   type="xs:string" use="required"/>
+    <xs:attribute name="lang" type="xs:string"/>
+  </xs:attributeGroup>
+
+  <!-- Type that uses both groups -->
+  <xs:complexType name="Person">
+    <xs:sequence>
+      <xs:group ref="NameGroup"/>
+      <xs:element name="email" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+    <xs:attributeGroup ref="CommonAttributes"/>
+  </xs:complexType>
+
+</xs:schema>

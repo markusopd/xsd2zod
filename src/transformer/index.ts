@@ -1,9 +1,11 @@
 import type {
   XsdAttribute,
+  XsdAttributeGroup,
   XsdChoice,
   XsdComplexType,
   XsdCompositorChild,
   XsdElement,
+  XsdNamedGroup,
   XsdSchema,
   XsdSimpleType,
 } from "../parser/types.js";
@@ -30,6 +32,10 @@ interface Context {
   warnings: Xsd2ZodWarning[];
   /** All named complex/simple types indexed by local name */
   typeIndex: Map<string, XsdComplexType | XsdSimpleType>;
+  /** xs:group definitions indexed by local name */
+  groupIndex: Map<string, XsdNamedGroup>;
+  /** xs:attributeGroup definitions indexed by local name */
+  attributeGroupIndex: Map<string, XsdAttributeGroup>;
   /** Track which types we are currently transforming (for cycle detection) */
   inProgress: Set<string>;
   /** Already-transformed named types (cache) */
@@ -286,10 +292,19 @@ function transformComplexType(
 
   const attrFields = transformAttributes(ct.attributes, ctx, xsdPath);
 
+  // Inline xs:attributeGroup references (from the complexType level and the extension level)
+  const attrGroupRefs = [
+    ...(ct.attributeGroupRefs ?? []),
+    ...(ct.extension?.attributeGroupRefs ?? []),
+  ];
+  const attrGroupFields = attrGroupRefs.flatMap((ref) =>
+    expandAttributeGroup(ref, ctx, xsdPath)
+  );
+
   return {
     kind: "object",
     ...(extendsName && { extends: extendsName }),
-    fields: [...fields, ...attrFields],
+    fields: [...fields, ...attrFields, ...attrGroupFields],
     compositor,
     choiceGroups,
     abstract: ct.abstract,
@@ -318,6 +333,20 @@ function transformAttributes(
   });
 }
 
+function expandAttributeGroup(ref: string, ctx: Context, xsdPath: string): ObjectField[] {
+  const local = stripPrefix(ref);
+  const group = ctx.attributeGroupIndex.get(local);
+  if (!group) {
+    warn(ctx, "UNSUPPORTED_CONSTRUCT", `xs:attributeGroup "${ref}" not found`, xsdPath);
+    return [];
+  }
+  const ownFields = transformAttributes(group.attributes, ctx, xsdPath);
+  const nestedFields = group.attributeGroupRefs.flatMap((r) =>
+    expandAttributeGroup(r, ctx, xsdPath)
+  );
+  return [...ownFields, ...nestedFields];
+}
+
 function transformChildren(
   children: XsdCompositorChild[],
   compositor: XsdComplexType["compositor"],
@@ -330,7 +359,38 @@ function transformChildren(
 
   for (const child of children) {
     if ("kind" in child && child.kind === "group") {
-      warn(ctx, "UNSUPPORTED_CONSTRUCT", `xs:group references are not yet supported`, xsdPath);
+      const local = stripPrefix(child.ref);
+      const group = ctx.groupIndex.get(local);
+      if (!group) {
+        warn(ctx, "UNSUPPORTED_CONSTRUCT", `xs:group "${child.ref}" not found`, xsdPath);
+        continue;
+      }
+      // Inline the group's children, remapping their internal order values
+      // to slots in the parent sequence.
+      const inner = transformChildren(group.children, group.compositor, ctx, xsdPath);
+      if (compositor === "sequence") {
+        // Map each unique inner order value to a fresh parent slot
+        const innerOrders = [...new Set(
+          inner.fields.filter((f) => f.meta.order !== undefined).map((f) => f.meta.order!)
+        )].sort((a, b) => a - b);
+        const orderMap = new Map<number, number>();
+        for (const io of innerOrders) {
+          orderMap.set(io, order++);
+        }
+        // Fields with no inner order (xs:all inside group) get no order
+        for (const f of inner.fields) {
+          if (f.meta.order !== undefined) {
+            fields.push({ ...f, meta: { ...f.meta, order: orderMap.get(f.meta.order)! } });
+          } else {
+            fields.push(f);
+          }
+        }
+      } else {
+        for (const f of inner.fields) fields.push(f);
+      }
+      for (const [k, v] of Object.entries(inner.choiceGroups)) {
+        choiceGroups[k] = v;
+      }
       continue;
     }
 
@@ -502,11 +562,22 @@ export function transform(
     if (st.name) typeIndex.set(st.name, st);
   }
 
+  const groupIndex = new Map<string, XsdNamedGroup>();
+  for (const g of schema.groups ?? []) {
+    if (g.name) groupIndex.set(g.name, g);
+  }
+  const attributeGroupIndex = new Map<string, XsdAttributeGroup>();
+  for (const ag of schema.attributeGroups ?? []) {
+    if (ag.name) attributeGroupIndex.set(ag.name, ag);
+  }
+
   const ctx: Context = {
     schema,
     opts: resolvedOpts,
     warnings,
     typeIndex,
+    groupIndex,
+    attributeGroupIndex,
     inProgress: new Set(),
     cache: new Map(),
   };

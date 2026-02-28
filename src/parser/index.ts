@@ -1,10 +1,12 @@
 import { XMLParser } from "fast-xml-parser";
 import type {
   XsdAttribute,
+  XsdAttributeGroup,
   XsdChoice,
   XsdComplexType,
   XsdCompositorChild,
   XsdElement,
+  XsdNamedGroup,
   XsdRestriction,
   XsdSchema,
   XsdSimpleType,
@@ -248,18 +250,28 @@ function parseElement(raw: Node): XsdElement {
 function parseCompositorChildren(raw: Node): XsdCompositorChild[] {
   const children: XsdCompositorChild[] = [];
 
-  for (const elementRaw of asArray(raw["element"] as Node | Node[])) {
-    children.push(parseElement(elementRaw));
-  }
-  for (const choiceRaw of asArray(raw["choice"] as Node | Node[])) {
-    children.push(parseChoiceNode(choiceRaw));
-  }
-  // xs:group references
-  for (const groupRaw of asArray(raw["group"] as Node | Node[])) {
-    const ref = attr(groupRaw, "ref");
-    if (ref) {
-      children.push({ kind: "group", ref });
+  // Iterate in document key order so xs:group, xs:element, xs:choice are
+  // processed in the order they appear in the XML (normalizeKeys preserves
+  // first-occurrence key order when merging same-named siblings).
+  for (const [key, value] of Object.entries(raw)) {
+    if (key.startsWith("@_")) continue; // skip attributes
+    if (key === "element") {
+      for (const elementRaw of asArray(value as Node | Node[])) {
+        children.push(parseElement(elementRaw));
+      }
+    } else if (key === "choice") {
+      for (const choiceRaw of asArray(value as Node | Node[])) {
+        children.push(parseChoiceNode(choiceRaw));
+      }
+    } else if (key === "group") {
+      for (const groupRaw of asArray(value as Node | Node[])) {
+        const ref = attr(groupRaw, "ref");
+        if (ref) {
+          children.push({ kind: "group", ref });
+        }
+      }
     }
+    // Other keys (annotation, sequence, etc.) are silently ignored here
   }
 
   return children;
@@ -273,10 +285,32 @@ function parseChoiceNode(raw: Node): XsdChoice {
   };
 }
 
+function parseAttributeGroupRefs(raw: Node): string[] {
+  return asArray(raw["attributeGroup"] as Node | Node[])
+    .map((n) => attr(n, "ref") ?? "")
+    .filter(Boolean);
+}
+
+function parseNamedGroup(raw: Node): XsdNamedGroup {
+  const name = attr(raw, "name") ?? "";
+  const { compositor, children } = detectCompositor(raw);
+  return { name, compositor, children };
+}
+
+function parseAttributeGroup(raw: Node): XsdAttributeGroup {
+  const name = attr(raw, "name") ?? "";
+  const attributes = asArray(raw["attribute"] as Node | Node[]).map(parseAttribute);
+  const attributeGroupRefs = asArray(raw["attributeGroup"] as Node | Node[])
+    .map((n) => attr(n, "ref") ?? "")
+    .filter(Boolean);
+  return { name, attributes, attributeGroupRefs };
+}
+
 function parseComplexType(raw: Node): XsdComplexType {
   const attributes = asArray(raw["attribute"] as Node | Node[]).map(parseAttribute);
   const abstract = attr(raw, "abstract") === "true";
   const mixed = attr(raw, "mixed") === "true";
+  const outerAttributeGroupRefs = parseAttributeGroupRefs(raw);
 
   // xs:simpleContent
   const simpleContentNode = toNode(raw["simpleContent"]);
@@ -284,7 +318,7 @@ function parseComplexType(raw: Node): XsdComplexType {
     const extNode = toNode(simpleContentNode["extension"]);
     if (extNode) {
       const scAttrs = asArray(extNode["attribute"] as Node | Node[]).map(parseAttribute);
-      return {
+      const result: XsdComplexType = {
         kind: "complex",
         compositor: "none",
         children: [],
@@ -296,6 +330,8 @@ function parseComplexType(raw: Node): XsdComplexType {
         mixed: false,
         abstract,
       };
+      if (outerAttributeGroupRefs.length > 0) result.attributeGroupRefs = outerAttributeGroupRefs;
+      return result;
     }
   }
 
@@ -306,7 +342,8 @@ function parseComplexType(raw: Node): XsdComplexType {
     if (extNode) {
       const { compositor, children } = detectCompositor(extNode);
       const extAttrs = asArray(extNode["attribute"] as Node | Node[]).map(parseAttribute);
-      return {
+      const extAttributeGroupRefs = parseAttributeGroupRefs(extNode);
+      const result: XsdComplexType = {
         kind: "complex",
         compositor,
         children,
@@ -320,11 +357,14 @@ function parseComplexType(raw: Node): XsdComplexType {
         mixed,
         abstract,
       };
+      if (outerAttributeGroupRefs.length > 0) result.attributeGroupRefs = outerAttributeGroupRefs;
+      if (extAttributeGroupRefs.length > 0) result.extension!.attributeGroupRefs = extAttributeGroupRefs;
+      return result;
     }
   }
 
   const { compositor, children } = detectCompositor(raw);
-  return {
+  const result: XsdComplexType = {
     kind: "complex",
     compositor,
     children,
@@ -332,6 +372,8 @@ function parseComplexType(raw: Node): XsdComplexType {
     mixed,
     abstract,
   };
+  if (outerAttributeGroupRefs.length > 0) result.attributeGroupRefs = outerAttributeGroupRefs;
+  return result;
 }
 
 function detectCompositor(
@@ -376,7 +418,7 @@ export function parseXsd(xsd: string): XsdSchema {
   const normalized = normalizeKeys(rawParsed) as Record<string, unknown>;
   const schemaNode = toNode(normalized["schema"]);
   if (!schemaNode) {
-    return { namespaces, elements: [], complexTypes: [], simpleTypes: [] };
+    return { namespaces, elements: [], complexTypes: [], simpleTypes: [], groups: [], attributeGroups: [] };
   }
 
   const elements = asArray(schemaNode["element"] as Node | Node[]).map(parseElement);
@@ -392,6 +434,12 @@ export function parseXsd(xsd: string): XsdSchema {
     if (name !== undefined) st.name = name;
     return st;
   });
+  const groups = asArray(schemaNode["group"] as Node | Node[])
+    .filter((n) => attr(n, "name") !== undefined)
+    .map(parseNamedGroup);
+  const attributeGroups = asArray(schemaNode["attributeGroup"] as Node | Node[])
+    .filter((n) => attr(n, "name") !== undefined)
+    .map(parseAttributeGroup);
 
   return {
     ...(targetNamespace !== undefined && { targetNamespace }),
@@ -399,5 +447,7 @@ export function parseXsd(xsd: string): XsdSchema {
     elements,
     complexTypes,
     simpleTypes,
+    groups,
+    attributeGroups,
   };
 }

@@ -152,4 +152,47 @@ describe("parseXsd", () => {
       expect("branches" in children[1]!).toBe(true);
     });
   });
+
+  describe("xs:group and xs:attributeGroup", () => {
+    it("parses a top-level xs:group with sequence children", () => {
+      const result = parseXsd(wrap(`
+        <xs:group name="NameGroup">
+          <xs:sequence>
+            <xs:element name="first" type="xs:string"/>
+            <xs:element name="last"  type="xs:string"/>
+          </xs:sequence>
+        </xs:group>
+      `));
+      expect(result.groups).toHaveLength(1);
+      expect(result.groups[0]!.name).toBe("NameGroup");
+      expect(result.groups[0]!.compositor).toBe("sequence");
+      expect(result.groups[0]!.children).toHaveLength(2);
+    });
+
+    it("parses a top-level xs:attributeGroup", () => {
+      const result = parseXsd(wrap(`
+        <xs:attributeGroup name="CommonAttrs">
+          <xs:attribute name="id"   type="xs:string" use="required"/>
+          <xs:attribute name="lang" type="xs:string"/>
+        </xs:attributeGroup>
+      `));
+      expect(result.attributeGroups).toHaveLength(1);
+      expect(result.attributeGroups[0]!.name).toBe("CommonAttrs");
+      expect(result.attributeGroups[0]!.attributes).toHaveLength(2);
+    });
+
+    it("records attributeGroupRefs on complexType", () => {
+      const result = parseXsd(wrap(`
+        <xs:attributeGroup name="CommonAttrs">
+          <xs:attribute name="id" type="xs:string"/>
+        </xs:attributeGroup>
+        <xs:complexType name="T">
+          <xs:sequence/>
+          <xs:attributeGroup ref="CommonAttrs"/>
+        </xs:complexType>
+      `));
+      const ct = result.complexTypes[0]!;
+      expect(ct.attributeGroupRefs).toEqual(["CommonAttrs"]);
+    });
+  });
 });
