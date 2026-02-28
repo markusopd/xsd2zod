@@ -32,6 +32,9 @@ function coreExpr(node: SchemaNode): string {
       if (node.members.length === 1) return emitNodeExpr(node.members[0]!);
       return `z.union([${node.members.map(emitNodeExpr).join(", ")}])`;
 
+    case "ref":
+      return node.ref;
+
     case "lazy":
       return `z.lazy(() => ${node.ref})`;
 
@@ -97,6 +100,8 @@ function collectDeps(node: SchemaNode): string[] {
       return collectDeps(node.item);
     case "union":
       return node.members.flatMap(collectDeps);
+    case "ref":
+      return [node.ref];
     case "lazy":
       return []; // intentionally omit — this is the cycle break
     default:

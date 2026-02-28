@@ -6,6 +6,7 @@ export type SchemaNode =
   | ArrayNode
   | UnionNode
   | EnumNode
+  | RefNode
   | LazyNode
   | UnknownNode;
 
@@ -51,6 +52,16 @@ export interface UnionNode extends NodeBase {
 export interface EnumNode extends NodeBase {
   kind: "enum";
   values: string[];
+}
+
+/**
+ * A direct reference to a named schema identifier, e.g. AddressSchema.
+ * Used when a field's type is a named top-level XSD type.
+ * Emitted as just the identifier (no z.lazy wrapper).
+ */
+export interface RefNode extends NodeBase {
+  kind: "ref";
+  ref: string;
 }
 
 export interface LazyNode extends NodeBase {

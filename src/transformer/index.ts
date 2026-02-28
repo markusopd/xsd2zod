@@ -68,16 +68,10 @@ function resolveTypeRef(
 
   const local = stripPrefix(typeRef);
 
-  // Cycle detection
+  // Cycle detection — emit z.lazy to break the cycle
   if (ctx.inProgress.has(local)) {
     warn(ctx, "CIRCULAR_REF", `Circular reference to "${local}"`, xsdPath);
-    const schemaId = `${local}Schema`;
-    return { kind: "lazy", ref: schemaId, tsType: local };
-  }
-
-  // Cache hit
-  if (ctx.cache.has(local)) {
-    return ctx.cache.get(local)!;
+    return { kind: "lazy", ref: `${local}Schema`, tsType: local };
   }
 
   const typeDef = ctx.typeIndex.get(local);
@@ -86,13 +80,19 @@ function resolveTypeRef(
     return { kind: "unknown" };
   }
 
-  ctx.inProgress.add(local);
-  const node = typeDef.kind === "simple"
-    ? transformSimpleType(typeDef, ctx, xsdPath)
-    : transformComplexType(typeDef as XsdComplexType, ctx, xsdPath);
-  ctx.inProgress.delete(local);
-  ctx.cache.set(local, node);
-  return node;
+  // Named type — emit a reference to its schema identifier rather than inlining.
+  // The type will be emitted as its own declaration by the main transform() loop.
+  // Ensure it is transformed and cached so the generator knows it exists.
+  if (!ctx.cache.has(local)) {
+    ctx.inProgress.add(local);
+    const node = typeDef.kind === "simple"
+      ? transformSimpleType(typeDef, ctx, xsdPath)
+      : transformComplexType(typeDef as XsdComplexType, ctx, xsdPath);
+    ctx.inProgress.delete(local);
+    ctx.cache.set(local, node);
+  }
+
+  return { kind: "ref", ref: `${local}Schema` };
 }
 
 function applyCoerce(expr: string, ctx: Context): string {
