@@ -68,30 +68,21 @@ function resolveTypeRef(
 
   const local = stripPrefix(typeRef);
 
-  // Cycle detection — emit z.lazy to break the cycle
+  // Cycle — the main loop has this type in progress, so a direct reference
+  // would be self-referential at initialisation time. Use z.lazy to break it.
   if (ctx.inProgress.has(local)) {
     warn(ctx, "CIRCULAR_REF", `Circular reference to "${local}"`, xsdPath);
     return { kind: "lazy", ref: `${local}Schema`, tsType: local };
   }
 
-  const typeDef = ctx.typeIndex.get(local);
-  if (!typeDef) {
+  if (!ctx.typeIndex.has(local)) {
     warn(ctx, "UNRESOLVED_TYPE_REF", `Cannot resolve type "${typeRef}"`, xsdPath);
     return { kind: "unknown" };
   }
 
-  // Named type — emit a reference to its schema identifier rather than inlining.
-  // The type will be emitted as its own declaration by the main transform() loop.
-  // Ensure it is transformed and cached so the generator knows it exists.
-  if (!ctx.cache.has(local)) {
-    ctx.inProgress.add(local);
-    const node = typeDef.kind === "simple"
-      ? transformSimpleType(typeDef, ctx, xsdPath)
-      : transformComplexType(typeDef as XsdComplexType, ctx, xsdPath);
-    ctx.inProgress.delete(local);
-    ctx.cache.set(local, node);
-  }
-
+  // Named type — return a reference identifier.
+  // The declaration is emitted by the main transform() loop; topoSort ensures
+  // it appears before any schema that references it.
   return { kind: "ref", ref: `${local}Schema` };
 }
 
@@ -527,7 +518,9 @@ export function transform(
   // Named complex types
   for (const ct of schema.complexTypes) {
     if (!ct.name) continue;
-    const node = transformComplexType(ct, ctx, ct.name);
+    ctx.inProgress.add(ct.name);
+    const node = ctx.cache.get(ct.name) ?? transformComplexType(ct, ctx, ct.name);
+    ctx.inProgress.delete(ct.name);
     ctx.cache.set(ct.name, node);
     declarations.push({ jsName: `${ct.name}Schema`, xmlName: ct.name, node });
   }
@@ -535,8 +528,9 @@ export function transform(
   // Named simple types
   for (const st of schema.simpleTypes) {
     if (!st.name) continue;
-    if (ctx.cache.has(st.name)) continue;
-    const node = transformSimpleType(st, ctx, st.name);
+    ctx.inProgress.add(st.name);
+    const node = ctx.cache.get(st.name) ?? transformSimpleType(st, ctx, st.name);
+    ctx.inProgress.delete(st.name);
     ctx.cache.set(st.name, node);
     declarations.push({ jsName: `${st.name}Schema`, xmlName: st.name, node });
   }
