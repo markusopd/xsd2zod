@@ -1,0 +1,90 @@
+export interface XsdAttribute {
+  name: string;
+  type: string;
+  use: "required" | "optional" | "prohibited";
+  default?: string;
+  fixed?: string;
+}
+
+export interface XsdElement {
+  name: string;
+  /** Reference to a named type (built-in or user-defined) */
+  type?: string;
+  minOccurs: number;
+  maxOccurs: number | "unbounded";
+  /** Inline complex or simple type definition */
+  inlineType?: XsdComplexType | XsdSimpleType;
+  nillable: boolean;
+  default?: string;
+  fixed?: string;
+}
+
+export interface XsdRestriction {
+  base: string;
+  enumeration?: string[];
+  minLength?: number;
+  maxLength?: number;
+  length?: number;
+  pattern?: string;
+  minInclusive?: string;
+  maxInclusive?: string;
+  minExclusive?: string;
+  maxExclusive?: string;
+  totalDigits?: number;
+  fractionDigits?: number;
+}
+
+export interface XsdSimpleType {
+  kind: "simple";
+  name?: string;
+  restriction?: XsdRestriction;
+  list?: { itemType: string };
+  union?: { memberTypes: string[] };
+}
+
+export interface XsdChoice {
+  minOccurs: number;
+  maxOccurs: number | "unbounded";
+  branches: Array<XsdElement | XsdChoice | XsdGroup>;
+}
+
+export interface XsdGroup {
+  kind: "group";
+  ref: string;
+}
+
+export type XsdCompositorChild = XsdElement | XsdChoice | XsdGroup;
+
+export interface XsdComplexType {
+  kind: "complex";
+  name?: string;
+  compositor: "sequence" | "all" | "choice" | "none";
+  children: XsdCompositorChild[];
+  attributes: XsdAttribute[];
+  /** For xs:extension */
+  extension?: {
+    base: string;
+    children: XsdCompositorChild[];
+    attributes: XsdAttribute[];
+    compositor: "sequence" | "all" | "choice" | "none";
+  };
+  /** For xs:simpleContent with xs:extension */
+  simpleContent?: {
+    base: string;
+    attributes: XsdAttribute[];
+  };
+  mixed: boolean;
+  abstract: boolean;
+}
+
+export interface XsdSchema {
+  targetNamespace?: string;
+  /** Map of namespace prefix → URI extracted from xmlns:* attributes */
+  namespaces: Record<string, string>;
+  /** Top-level xs:element declarations */
+  elements: XsdElement[];
+  /** Top-level xs:complexType declarations */
+  complexTypes: XsdComplexType[];
+  /** Top-level xs:simpleType declarations */
+  simpleTypes: XsdSimpleType[];
+}

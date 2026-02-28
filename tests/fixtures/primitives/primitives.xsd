@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="data">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="str"      type="xs:string"/>
+        <xs:element name="bool"     type="xs:boolean"/>
+        <xs:element name="int"      type="xs:int"/>
+        <xs:element name="integer"  type="xs:integer"/>
+        <xs:element name="decimal"  type="xs:decimal"/>
+        <xs:element name="date"     type="xs:date"/>
+        <xs:element name="dateTime" type="xs:dateTime"/>
+        <xs:element name="anyUri"   type="xs:anyURI"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
