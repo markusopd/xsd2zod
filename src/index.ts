@@ -5,6 +5,8 @@ import { generate } from "./generator/index.js";
 import type { Xsd2ZodOptions, Xsd2ZodResult } from "./meta-types.js";
 
 export type { XmlFieldMeta, XmlTypeMeta, XmlMeta, Xsd2ZodOptions, Xsd2ZodResult, Xsd2ZodWarning, WarningCode } from "./meta-types.js";
+export { objectToXml } from "./serializer/index.js";
+export type { XmlSerializeOptions } from "./serializer/index.js";
 
 export function xsd2zod(xsdString: string, opts: Xsd2ZodOptions = {}): Xsd2ZodResult {
   const schema = parseXsd(xsdString);

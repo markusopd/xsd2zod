@@ -39,6 +39,25 @@ export interface XmlFieldMeta {
 
   /** Whether the element accepts xsi:nil="true" */
   nillable?: boolean;
+
+  /** True when the element is repeated (maxOccurs > 1 or unbounded) */
+  isArray?: boolean;
+
+  /** True when the element or attribute may be absent (minOccurs === 0 or use="optional") */
+  optional?: boolean;
+
+  /**
+   * For element fields that reference a named complex type: the XmlTypeMeta
+   * of that type. Populated in generated output as a direct JS reference so
+   * the meta graph is fully self-contained for serialization.
+   */
+  nestedMeta?: XmlTypeMeta;
+
+  /**
+   * @internal Used by the code generator to emit the nestedMeta reference.
+   * Never appears in the generated output.
+   */
+  xmlTypeName?: string;
 }
 
 export interface XmlTypeMeta<_T extends ZodTypeAny = ZodTypeAny> {

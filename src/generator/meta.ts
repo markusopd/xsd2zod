@@ -14,6 +14,10 @@ function emitFieldMeta(meta: XmlFieldMeta): string {
   if (meta.default !== undefined) parts.push(`default: ${JSON.stringify(meta.default)}`);
   if (meta.fixed !== undefined) parts.push(`fixed: ${JSON.stringify(meta.fixed)}`);
   if (meta.nillable === true) parts.push(`nillable: true`);
+  if (meta.isArray === true) parts.push(`isArray: true`);
+  if (meta.optional === true) parts.push(`optional: true`);
+  // Emit nestedMeta as a direct JS reference (not a serialised literal)
+  if (meta.xmlTypeName !== undefined) parts.push(`nestedMeta: ${meta.xmlTypeName}Meta`);
   return `{ ${parts.join(", ")} }`;
 }
 

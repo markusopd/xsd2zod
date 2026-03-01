@@ -458,6 +458,7 @@ function transformAttributes(
       xmlName: a.name,
       ...(a.default !== undefined && { default: a.default }),
       ...(a.fixed !== undefined && { fixed: a.fixed }),
+      ...(a.use === "optional" && { optional: true }),
     };
     return { jsName: toCamelCase(a.name), node, meta };
   });
@@ -626,14 +627,19 @@ function transformElement(
   const jsName = toCamelCase(el.name);
   const elementPath = `${xsdPath}.${el.name}`;
 
-  let node = elementSchemaNode(el, ctx, elementPath);
+  const coreNode = elementSchemaNode(el, ctx, elementPath);
+
+  // Detect reference to a named complex type for nestedMeta emission
+  const xmlTypeName =
+    coreNode.kind === "ref"
+      ? coreNode.ref.replace(/Schema$/, "")
+      : undefined;
 
   // Cardinality
-  const isArray =
+  const isArrayField =
     el.maxOccurs === "unbounded" || (typeof el.maxOccurs === "number" && el.maxOccurs > 1);
-  if (isArray) {
-    node = { kind: "array", item: node };
-  }
+
+  let node: SchemaNode = isArrayField ? { kind: "array", item: coreNode } : coreNode;
   if (el.minOccurs === 0) {
     node = applyAbsence(node, ctx);
   }
@@ -648,6 +654,9 @@ function transformElement(
     ...(el.nillable && { nillable: true }),
     ...(el.default !== undefined && { default: el.default }),
     ...(el.fixed !== undefined && { fixed: el.fixed }),
+    ...(isArrayField && { isArray: true }),
+    ...(el.minOccurs === 0 && { optional: true }),
+    ...(xmlTypeName !== undefined && { xmlTypeName }),
   };
 
   return { jsName, node, meta };
