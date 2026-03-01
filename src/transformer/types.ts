@@ -88,4 +88,6 @@ export interface Declaration {
    * exclusively for XmlMeta emission (all branches flattened as optional fields).
    */
   metaNode?: ObjectNode;
+  /** Target namespace URI from xs:schema/@targetNamespace */
+  namespace?: string;
 }

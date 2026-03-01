@@ -798,6 +798,7 @@ export function transform(
     ctx.cache.set(ct.name, node);
     const decl: Declaration = { jsName: `${ct.name}Schema`, xmlName: ct.name, node };
     if (metaNode !== undefined) decl.metaNode = metaNode;
+    if (schema.targetNamespace) decl.namespace = schema.targetNamespace;
     declarations.push(decl);
   }
 
@@ -808,7 +809,9 @@ export function transform(
     const node = ctx.cache.get(st.name) ?? transformSimpleType(st, ctx, st.name);
     ctx.inProgress.delete(st.name);
     ctx.cache.set(st.name, node);
-    declarations.push({ jsName: `${st.name}Schema`, xmlName: st.name, node });
+    const stDecl: Declaration = { jsName: `${st.name}Schema`, xmlName: st.name, node };
+    if (schema.targetNamespace) stDecl.namespace = schema.targetNamespace;
+    declarations.push(stDecl);
   }
 
   // Top-level elements
@@ -816,7 +819,9 @@ export function transform(
     if (!el.name) continue;
     const node = elementSchemaNode(el, ctx, el.name);
     const jsName = `${toCamelCase(el.name)}Schema`;
-    declarations.push({ jsName, xmlName: el.name, node });
+    const elDecl: Declaration = { jsName, xmlName: el.name, node };
+    if (schema.targetNamespace) elDecl.namespace = schema.targetNamespace;
+    declarations.push(elDecl);
   }
 
   return { declarations, warnings };

@@ -25,7 +25,9 @@ function buildTypeMeta(decl: Declaration): XmlTypeMeta | null {
   // For union declarations (top-level choice), use metaNode if present
   const node = decl.metaNode ?? decl.node;
   if (node.kind !== "object") return null;
-  return buildObjectMeta(node, decl.xmlName);
+  const meta = buildObjectMeta(node, decl.xmlName);
+  if (decl.namespace !== undefined) meta.namespace = decl.namespace;
+  return meta;
 }
 
 function buildObjectMeta(node: ObjectNode, xmlName: string): XmlTypeMeta {

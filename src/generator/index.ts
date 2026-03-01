@@ -11,6 +11,13 @@ export function generate(declarations: Declaration[]): string {
     "",
   ];
 
+  // Emit target namespace constant if any declaration carries one
+  const namespace = declarations.find((d) => d.namespace !== undefined)?.namespace;
+  if (namespace !== undefined) {
+    blocks.push(`export const $targetNamespace = ${JSON.stringify(namespace)};`);
+    blocks.push("");
+  }
+
   for (const decl of sorted) {
     blocks.push(emitSchemaDeclaration(decl));
     if (hasMeta(decl)) {
