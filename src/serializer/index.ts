@@ -86,9 +86,10 @@ function serializeObject(
     attrStr += ` ${fm.xmlName}="${escapeAttr(String(raw))}"`;
   }
 
-  // Namespace on root element only
-  if (depth === 0 && options.namespace) {
-    attrStr += ` xmlns="${escapeAttr(options.namespace)}"`;
+  // Namespace on root element only — options.namespace overrides meta.namespace
+  const ns = depth === 0 ? (options.namespace ?? meta.namespace) : undefined;
+  if (ns) {
+    attrStr += ` xmlns="${escapeAttr(ns)}"`;
   }
 
   // Sort content fields by order for sequence compositor; keep definition

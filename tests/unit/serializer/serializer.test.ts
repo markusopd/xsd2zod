@@ -173,7 +173,7 @@ describe("objectToXml", () => {
   });
 
   describe("namespace", () => {
-    it("adds xmlns to the root element", () => {
+    it("adds xmlns from options.namespace", () => {
       const meta = seqMeta("Root", {
         val: { kind: "element", xmlName: "val", order: 0 },
       });
@@ -181,6 +181,31 @@ describe("objectToXml", () => {
         namespace: "http://example.com/ns",
       });
       expect(xml).toContain('xmlns="http://example.com/ns"');
+    });
+
+    it("uses meta.namespace automatically when no options.namespace given", () => {
+      const meta: XmlTypeMeta = {
+        xmlName: "Root",
+        compositor: "sequence",
+        namespace: "http://auto.example.com/ns",
+        fields: { val: { kind: "element", xmlName: "val", order: 0 } },
+      };
+      const xml = objectToXml({ val: "1" }, meta);
+      expect(xml).toContain('xmlns="http://auto.example.com/ns"');
+    });
+
+    it("options.namespace overrides meta.namespace", () => {
+      const meta: XmlTypeMeta = {
+        xmlName: "Root",
+        compositor: "sequence",
+        namespace: "http://meta.example.com/ns",
+        fields: { val: { kind: "element", xmlName: "val", order: 0 } },
+      };
+      const xml = objectToXml({ val: "1" }, meta, {
+        namespace: "http://override.example.com/ns",
+      });
+      expect(xml).toContain('xmlns="http://override.example.com/ns"');
+      expect(xml).not.toContain("meta.example.com");
     });
   });
 
