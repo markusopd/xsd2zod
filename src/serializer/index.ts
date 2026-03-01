@@ -47,7 +47,7 @@ export function objectToXml(
 ): string {
   const rootName = options.rootElement ?? meta.xmlName;
   const lines: string[] = [];
-  serializeObject(value, meta, rootName, options, lines, 0);
+  serializeObject(value, meta, rootName, options, lines, 0, rootName);
   return lines.join("\n");
 }
 
@@ -61,7 +61,8 @@ function serializeObject(
   elementName: string,
   options: XmlSerializeOptions,
   out: string[],
-  depth: number
+  depth: number,
+  path: string
 ): void {
   if (value === null || value === undefined) return;
   if (typeof value !== "object" || Array.isArray(value)) return;
@@ -82,7 +83,12 @@ function serializeObject(
   for (const fm of attrFields) {
     const jsName = findJsName(meta, fm);
     const raw = obj[jsName];
-    if (raw === undefined || raw === null) continue;
+    if (raw === undefined || raw === null) {
+      if (!fm.optional) {
+        throw new Error(`Required attribute "${fm.xmlName}" is missing at ${path}`);
+      }
+      continue;
+    }
     if (typeof raw === "object") continue; // skip non-primitive attribute values
     attrStr += ` ${fm.xmlName}="${escapeAttr(String(raw))}"`;
   }
@@ -122,16 +128,19 @@ function serializeObject(
     if (raw === undefined || raw === null) {
       if (fm.nillable) {
         childLines.push(indentStr(options, depth + 1) + `<${fm.xmlName} xsi:nil="true"/>`);
+      } else if (!fm.optional && !fm.choiceGroup) {
+        throw new Error(`Required element "${fm.xmlName}" is missing at ${path}`);
       }
       continue;
     }
 
+    const fieldPath = `${path}.${fm.xmlName}`;
     if (Array.isArray(raw)) {
       for (const item of raw) {
-        serializeField(item, fm, options, childLines, depth + 1);
+        serializeField(item, fm, options, childLines, depth + 1, fieldPath);
       }
     } else {
-      serializeField(raw, fm, options, childLines, depth + 1);
+      serializeField(raw, fm, options, childLines, depth + 1, fieldPath);
     }
   }
 
@@ -154,20 +163,21 @@ function serializeField(
   fm: XmlFieldMeta,
   options: XmlSerializeOptions,
   out: string[],
-  depth: number
+  depth: number,
+  path: string
 ): void {
   if (value === null || value === undefined) return;
 
   if (Array.isArray(value)) {
     for (const item of value) {
-      serializeField(item, fm, options, out, depth);
+      serializeField(item, fm, options, out, depth, path);
     }
     return;
   }
 
   if (typeof value === "object") {
     if (fm.nestedMeta) {
-      serializeObject(value, fm.nestedMeta, fm.xmlName, options, out, depth);
+      serializeObject(value, fm.nestedMeta, fm.xmlName, options, out, depth, path);
     }
     // Object with no nestedMeta: emit a self-closing tag rather than [object Object]
     return;

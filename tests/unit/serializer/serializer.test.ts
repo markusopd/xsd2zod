@@ -226,4 +226,48 @@ describe("objectToXml", () => {
       expect(xml).toContain('label="say &quot;hi&quot;"');
     });
   });
+
+  describe("required vs optional field validation", () => {
+    it("throws when a required element is missing", () => {
+      const meta = seqMeta("T", {
+        name: { kind: "element", xmlName: "name", order: 0 },
+      });
+      expect(() => objectToXml({}, meta)).toThrow(/Required element "name"/);
+    });
+
+    it("throws when a required attribute is missing", () => {
+      const meta = seqMeta("T", {
+        id:   { kind: "attribute", xmlName: "id" },
+        name: { kind: "element",   xmlName: "name", order: 0 },
+      });
+      expect(() => objectToXml({ name: "x" }, meta)).toThrow(/Required attribute "id"/);
+    });
+
+    it("silently skips an optional element that is absent", () => {
+      const meta = seqMeta("T", {
+        name:  { kind: "element", xmlName: "name",  order: 0 },
+        alias: { kind: "element", xmlName: "alias", order: 1, optional: true },
+      });
+      expect(() => objectToXml({ name: "x" }, meta)).not.toThrow();
+      expect(objectToXml({ name: "x" }, meta)).not.toContain("alias");
+    });
+
+    it("silently skips an absent choice-group member", () => {
+      const meta = seqMeta("T", {
+        a: { kind: "element", xmlName: "a", order: 0, choiceGroup: "choice_0" },
+        b: { kind: "element", xmlName: "b", order: 0, choiceGroup: "choice_0" },
+      });
+      expect(() => objectToXml({ a: "1" }, meta)).not.toThrow();
+    });
+
+    it("includes path in the error message", () => {
+      const innerMeta = seqMeta("Inner", {
+        value: { kind: "element", xmlName: "value", order: 0 },
+      });
+      const outerMeta = seqMeta("Outer", {
+        inner: { kind: "element", xmlName: "inner", order: 0, nestedMeta: innerMeta },
+      });
+      expect(() => objectToXml({ inner: {} }, outerMeta)).toThrow(/Outer\.inner/);
+    });
+  });
 });
