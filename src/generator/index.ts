@@ -20,6 +20,8 @@ export function generate(declarations: Declaration[]): string {
 
   for (const decl of sorted) {
     blocks.push(emitSchemaDeclaration(decl));
+    const typeName = decl.jsName.replace(/Schema$/, "");
+    blocks.push(`export type ${typeName} = z.infer<typeof ${decl.jsName}>;`);
     if (hasMeta(decl)) {
       const metaDecl = emitMetaDeclaration(decl);
       if (metaDecl) blocks.push(metaDecl);
