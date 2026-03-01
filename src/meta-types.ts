@@ -1,4 +1,4 @@
-import type { ZodTypeAny } from "zod";
+import type { ZodType } from "zod";
 
 export interface XmlFieldMeta {
   /** How this field maps to an XML node */
@@ -60,7 +60,7 @@ export interface XmlFieldMeta {
   xmlTypeName?: string;
 }
 
-export interface XmlTypeMeta<_T extends ZodTypeAny = ZodTypeAny> {
+export interface XmlTypeMeta<_T extends ZodType = ZodType> {
   /** Original XML element or type name */
   xmlName: string;
 
@@ -95,7 +95,7 @@ export interface XmlTypeMeta<_T extends ZodTypeAny = ZodTypeAny> {
   mixed?: boolean;
 }
 
-export type XmlMeta<T extends ZodTypeAny = ZodTypeAny> = XmlTypeMeta<T>;
+export type XmlMeta<T extends ZodType = ZodType> = XmlTypeMeta<T>;
 
 export type WarningCode =
   | "UNSUPPORTED_CONSTRUCT" // construct skipped entirely

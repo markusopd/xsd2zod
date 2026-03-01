@@ -16,7 +16,9 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "vitest watch",
@@ -25,7 +27,7 @@
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
-    "zod": "^3.0.0"
+    "zod": "^4.3.6"
   },
   "dependencies": {
     "fast-xml-parser": "^4.4.1"
@@ -35,6 +37,6 @@
     "tsup": "^8.0.0",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0",
-    "zod": "^3.23.0"
+    "zod": "^4.3.6"
   }
 }
