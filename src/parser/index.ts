@@ -9,6 +9,7 @@ import type {
   XsdNamedGroup,
   XsdRestriction,
   XsdSchema,
+  XsdSequenceBranch,
   XsdSimpleType,
 } from "./types.js";
 
@@ -247,8 +248,9 @@ function parseElement(raw: Node): XsdElement {
   return el;
 }
 
-function parseCompositorChildren(raw: Node): XsdCompositorChild[] {
+function parseCompositorChildren(raw: Node): { children: XsdCompositorChild[]; hasAny: boolean } {
   const children: XsdCompositorChild[] = [];
+  let hasAny = false;
 
   // Iterate in document key order so xs:group, xs:element, xs:choice are
   // processed in the order they appear in the XML (normalizeKeys preserves
@@ -270,18 +272,28 @@ function parseCompositorChildren(raw: Node): XsdCompositorChild[] {
           children.push({ kind: "group", ref });
         }
       }
+    } else if (key === "sequence") {
+      // Nested xs:sequence (only meaningful inside xs:choice branches)
+      for (const seqRaw of asArray(value as Node | Node[])) {
+        const { children: seqChildren } = parseCompositorChildren(seqRaw);
+        const branch: XsdSequenceBranch = { kind: "sequence", children: seqChildren };
+        children.push(branch);
+      }
+    } else if (key === "any") {
+      hasAny = true;
     }
-    // Other keys (annotation, sequence, etc.) are silently ignored here
+    // Other keys (annotation, etc.) are silently ignored here
   }
 
-  return children;
+  return { children, hasAny };
 }
 
 function parseChoiceNode(raw: Node): XsdChoice {
+  const { children } = parseCompositorChildren(raw);
   return {
     minOccurs: numAttr(raw, "minOccurs", 1),
     maxOccurs: maxOccursAttr(raw, 1),
-    branches: parseCompositorChildren(raw),
+    branches: children,
   };
 }
 
@@ -335,12 +347,12 @@ function parseComplexType(raw: Node): XsdComplexType {
     }
   }
 
-  // xs:complexContent with xs:extension
+  // xs:complexContent with xs:extension or xs:restriction
   const complexContentNode = toNode(raw["complexContent"]);
   if (complexContentNode) {
     const extNode = toNode(complexContentNode["extension"]);
     if (extNode) {
-      const { compositor, children } = detectCompositor(extNode);
+      const { compositor, children, hasAny } = detectCompositor(extNode);
       const extAttrs = asArray(extNode["attribute"] as Node | Node[]).map(parseAttribute);
       const extAttributeGroupRefs = parseAttributeGroupRefs(extNode);
       const result: XsdComplexType = {
@@ -359,11 +371,37 @@ function parseComplexType(raw: Node): XsdComplexType {
       };
       if (outerAttributeGroupRefs.length > 0) result.attributeGroupRefs = outerAttributeGroupRefs;
       if (extAttributeGroupRefs.length > 0) result.extension!.attributeGroupRefs = extAttributeGroupRefs;
+      if (hasAny) result.hasAny = true;
+      return result;
+    }
+    const restrictionNode = toNode(complexContentNode["restriction"]);
+    if (restrictionNode) {
+      const { compositor, children, hasAny } = detectCompositor(restrictionNode);
+      const restAttrs = asArray(restrictionNode["attribute"] as Node | Node[]).map(parseAttribute);
+      const restAttributeGroupRefs = parseAttributeGroupRefs(restrictionNode);
+      const result: XsdComplexType = {
+        kind: "complex",
+        compositor,
+        children,
+        attributes: [...attributes, ...restAttrs],
+        restriction: {
+          base: attr(restrictionNode, "base") ?? "",
+          children,
+          attributes: restAttrs,
+          compositor,
+        },
+        mixed,
+        abstract,
+      };
+      if (outerAttributeGroupRefs.length > 0) result.attributeGroupRefs = outerAttributeGroupRefs;
+      if (restAttributeGroupRefs.length > 0) result.restriction!.attributeGroupRefs = restAttributeGroupRefs;
+      if (hasAny) result.hasAny = true;
       return result;
     }
   }
 
-  const { compositor, children } = detectCompositor(raw);
+  const hasAnyAttribute = Object.prototype.hasOwnProperty.call(raw, "anyAttribute");
+  const { compositor, children, hasAny } = detectCompositor(raw);
   const result: XsdComplexType = {
     kind: "complex",
     compositor,
@@ -373,28 +411,33 @@ function parseComplexType(raw: Node): XsdComplexType {
     abstract,
   };
   if (outerAttributeGroupRefs.length > 0) result.attributeGroupRefs = outerAttributeGroupRefs;
+  if (hasAny) result.hasAny = true;
+  if (hasAnyAttribute) result.hasAnyAttribute = true;
   return result;
 }
 
 function detectCompositor(
   raw: Node
-): { compositor: XsdComplexType["compositor"]; children: XsdCompositorChild[] } {
+): { compositor: XsdComplexType["compositor"]; children: XsdCompositorChild[]; hasAny: boolean } {
   const sequenceNode = toNode(raw["sequence"]);
   if (sequenceNode) {
-    return { compositor: "sequence", children: parseCompositorChildren(sequenceNode) };
+    const { children, hasAny } = parseCompositorChildren(sequenceNode);
+    return { compositor: "sequence", children, hasAny };
   }
   const allNode = toNode(raw["all"]);
   if (allNode) {
-    return { compositor: "all", children: parseCompositorChildren(allNode) };
+    const { children, hasAny } = parseCompositorChildren(allNode);
+    return { compositor: "all", children, hasAny };
   }
   const choiceNode = toNode(raw["choice"]);
   if (choiceNode) {
     return {
       compositor: "choice",
       children: [parseChoiceNode(choiceNode)],
+      hasAny: false,
     };
   }
-  return { compositor: "none", children: [] };
+  return { compositor: "none", children: [], hasAny: false };
 }
 
 // ---------------------------------------------------------------------------

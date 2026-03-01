@@ -45,7 +45,7 @@ export interface XsdSimpleType {
 export interface XsdChoice {
   minOccurs: number;
   maxOccurs: number | "unbounded";
-  branches: Array<XsdElement | XsdChoice | XsdGroup>;
+  branches: Array<XsdElement | XsdChoice | XsdGroup | XsdSequenceBranch>;
 }
 
 export interface XsdGroup {
@@ -53,7 +53,13 @@ export interface XsdGroup {
   ref: string;
 }
 
-export type XsdCompositorChild = XsdElement | XsdChoice | XsdGroup;
+/** A nested xs:sequence inside an xs:choice branch */
+export interface XsdSequenceBranch {
+  kind: "sequence";
+  children: XsdCompositorChild[];
+}
+
+export type XsdCompositorChild = XsdElement | XsdChoice | XsdGroup | XsdSequenceBranch;
 
 export interface XsdComplexType {
   kind: "complex";
@@ -76,6 +82,18 @@ export interface XsdComplexType {
     base: string;
     attributes: XsdAttribute[];
   };
+  /** For xs:complexContent/xs:restriction */
+  restriction?: {
+    base: string;
+    children: XsdCompositorChild[];
+    attributes: XsdAttribute[];
+    attributeGroupRefs?: string[];
+    compositor: "sequence" | "all" | "choice" | "none";
+  };
+  /** True when the compositor children contain xs:any */
+  hasAny?: boolean;
+  /** True when xs:anyAttribute is present */
+  hasAnyAttribute?: boolean;
   mixed: boolean;
   abstract: boolean;
 }

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <xs:complexType name="Address">
+    <xs:sequence>
+      <xs:element name="street" type="xs:string"/>
+      <xs:element name="city" type="xs:string"/>
+      <xs:element name="country" type="xs:string"/>
+      <xs:element name="postalCode" type="xs:string" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+
+  <!-- xs:complexContent/xs:restriction: a subtype with fewer fields -->
+  <xs:complexType name="DomesticAddress">
+    <xs:complexContent>
+      <xs:restriction base="Address">
+        <xs:sequence>
+          <xs:element name="street" type="xs:string"/>
+          <xs:element name="city" type="xs:string"/>
+        </xs:sequence>
+      </xs:restriction>
+    </xs:complexContent>
+  </xs:complexType>
+
+</xs:schema>

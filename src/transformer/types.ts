@@ -83,4 +83,9 @@ export interface Declaration {
   /** Original XSD name, e.g. "Person" */
   xmlName: string;
   node: SchemaNode;
+  /**
+   * For top-level choice types emitted as z.union: an ObjectNode used
+   * exclusively for XmlMeta emission (all branches flattened as optional fields).
+   */
+  metaNode?: ObjectNode;
 }

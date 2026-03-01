@@ -13,7 +13,7 @@ export function generate(declarations: Declaration[]): string {
 
   for (const decl of sorted) {
     blocks.push(emitSchemaDeclaration(decl));
-    if (hasMeta(decl.node)) {
+    if (hasMeta(decl)) {
       const metaDecl = emitMetaDeclaration(decl);
       if (metaDecl) blocks.push(metaDecl);
     }

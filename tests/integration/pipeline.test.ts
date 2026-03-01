@@ -261,5 +261,95 @@ describe("full pipeline", () => {
       expect(code).toContain('extends: "Animal"');
       expect(code).toContain('extends: "Dog"');
     });
+
+    it("processes union-choice.xsd emitting z.union", async () => {
+      const xsd = await readFile(
+        join(import.meta.dirname, "../fixtures/union-choice.xsd"),
+        "utf-8"
+      );
+      const { code, warnings } = xsd2zod(xsd);
+      expect(warnings.filter((w) => w.code === "UNSUPPORTED_CONSTRUCT")).toHaveLength(0);
+      // Top-level choice → z.union
+      expect(code).toContain("z.union([");
+      expect(code).toContain("PaymentSchema");
+      // Meta object still emitted
+      expect(code).toContain("PaymentMeta");
+      expect(code).toContain('compositor: "choice"');
+    });
+
+    it("processes any.xsd emitting $any and $anyAttr fields", async () => {
+      const xsd = await readFile(
+        join(import.meta.dirname, "../fixtures/any.xsd"),
+        "utf-8"
+      );
+      const { code, warnings } = xsd2zod(xsd);
+      expect(warnings.filter((w) => w.code === "UNSUPPORTED_CONSTRUCT")).toHaveLength(0);
+      expect(code).toContain("$any");
+      expect(code).toContain("z.unknown()");
+      expect(code).toContain("$anyAttr");
+      expect(code).toContain("z.record(z.string(), z.unknown())");
+    });
+
+    it("processes restriction.xsd emitting standalone object for xs:restriction", async () => {
+      const xsd = await readFile(
+        join(import.meta.dirname, "../fixtures/restriction.xsd"),
+        "utf-8"
+      );
+      const { code } = xsd2zod(xsd);
+      expect(code).toContain("DomesticAddressSchema");
+      // Should NOT extend AddressSchema
+      expect(code).not.toContain("AddressSchema.extend(");
+      // Should contain only the restriction's own fields
+      expect(code).toContain("street");
+      expect(code).toContain("city");
+    });
+  });
+
+  describe("xs:sequence inside xs:choice (inline superRefine)", () => {
+    it("flattens sequence branches as optional choice members", () => {
+      const { code, warnings } = xsd2zod(wrap(`
+        <xs:complexType name="Event">
+          <xs:sequence>
+            <xs:choice>
+              <xs:sequence>
+                <xs:element name="startDate" type="xs:string"/>
+                <xs:element name="endDate"   type="xs:string"/>
+              </xs:sequence>
+              <xs:element name="singleDay" type="xs:string"/>
+            </xs:choice>
+          </xs:sequence>
+        </xs:complexType>
+      `));
+      expect(warnings.filter((w) => w.code === "UNSUPPORTED_CONSTRUCT")).toHaveLength(0);
+      expect(code).toContain("startDate");
+      expect(code).toContain("endDate");
+      expect(code).toContain("singleDay");
+      expect(code).toContain("superRefine");
+    });
+  });
+
+  describe("xs:group inside xs:choice", () => {
+    it("inlines group members as choice branches without UNSUPPORTED_CONSTRUCT", () => {
+      const { code, warnings } = xsd2zod(wrap(`
+        <xs:group name="NameGroup">
+          <xs:sequence>
+            <xs:element name="firstName" type="xs:string"/>
+            <xs:element name="lastName"  type="xs:string"/>
+          </xs:sequence>
+        </xs:group>
+        <xs:complexType name="T">
+          <xs:sequence>
+            <xs:choice>
+              <xs:group ref="NameGroup"/>
+              <xs:element name="alias" type="xs:string"/>
+            </xs:choice>
+          </xs:sequence>
+        </xs:complexType>
+      `));
+      expect(warnings.filter((w) => w.code === "UNSUPPORTED_CONSTRUCT")).toHaveLength(0);
+      expect(code).toContain("firstName");
+      expect(code).toContain("lastName");
+      expect(code).toContain("alias");
+    });
   });
 });

@@ -18,7 +18,8 @@ function emitFieldMeta(meta: XmlFieldMeta): string {
 }
 
 function buildTypeMeta(decl: Declaration): XmlTypeMeta | null {
-  const node = decl.node;
+  // For union declarations (top-level choice), use metaNode if present
+  const node = decl.metaNode ?? decl.node;
   if (node.kind !== "object") return null;
   return buildObjectMeta(node, decl.xmlName);
 }
@@ -85,6 +86,6 @@ export function emitMetaDeclaration(decl: Declaration): string | null {
 }
 
 /** Returns true if this declaration should have an accompanying Meta object. */
-export function hasMeta(node: SchemaNode): boolean {
-  return node.kind === "object";
+export function hasMeta(decl: Declaration): boolean {
+  return decl.node.kind === "object" || decl.metaNode !== undefined;
 }

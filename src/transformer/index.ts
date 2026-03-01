@@ -7,6 +7,7 @@ import type {
   XsdElement,
   XsdNamedGroup,
   XsdSchema,
+  XsdSequenceBranch,
   XsdSimpleType,
 } from "../parser/types.js";
 import type { Xsd2ZodOptions, Xsd2ZodWarning, XmlFieldMeta } from "../meta-types.js";
@@ -18,6 +19,7 @@ import type {
   ObjectNode,
   PrimitiveNode,
   SchemaNode,
+  UnionNode,
   UnknownNode,
 } from "./types.js";
 import { resolveBuiltIn } from "./primitives.js";
@@ -246,6 +248,93 @@ function translateXsdRegex(
 
 let choiceCounter = 0;
 
+/**
+ * Transform a top-level xs:choice compositor into a z.union of per-branch ObjectNodes.
+ * Returns both the UnionNode (for the schema) and an ObjectNode (for XmlMeta).
+ */
+function transformTopLevelChoice(
+  ct: XsdComplexType,
+  choice: XsdChoice,
+  sharedAttrFields: ObjectField[],
+  ctx: Context,
+  xsdPath: string
+): { unionNode: UnionNode; metaNode: ObjectNode } {
+  const members: ObjectNode[] = [];
+  // Also collect all fields for the metaNode (backward-compatible meta)
+  const allMetaFields: ObjectField[] = [];
+  const allChoiceGroups: Record<string, string[]> = {};
+  const groupId = `choice_${choiceCounter++}`;
+  const allMemberNames: string[] = [];
+
+  for (const branch of choice.branches) {
+    let branchFields: ObjectField[];
+
+    if ("kind" in branch && branch.kind === "group") {
+      const local = stripPrefix(branch.ref);
+      const group = ctx.groupIndex.get(local);
+      if (!group) {
+        warn(ctx, "UNSUPPORTED_CONSTRUCT", `xs:group "${branch.ref}" not found`, xsdPath);
+        continue;
+      }
+      const inner = transformChildren(group.children, group.compositor, ctx, xsdPath);
+      branchFields = inner.fields;
+    } else if ("kind" in branch && branch.kind === "sequence") {
+      const inner = transformChildren(branch.children, "sequence", ctx, xsdPath);
+      branchFields = inner.fields;
+    } else if ("branches" in branch) {
+      // Nested choice — flatten all its element fields
+      const inner = transformChildren([branch], "sequence", ctx, xsdPath);
+      branchFields = inner.fields.map((f) => ({ ...f, node: applyAbsence(f.node, ctx) }));
+    } else {
+      const el = branch as XsdElement;
+      const node = elementSchemaNode(el, ctx, xsdPath);
+      const meta: XmlFieldMeta = {
+        kind: "element",
+        xmlName: el.name,
+        order: 0,
+        ...(el.nillable && { nillable: true }),
+        ...(el.default !== undefined && { default: el.default }),
+        ...(el.fixed !== undefined && { fixed: el.fixed }),
+      };
+      branchFields = [{ jsName: toCamelCase(el.name), node, meta }];
+    }
+
+    const variantNode: ObjectNode = {
+      kind: "object",
+      fields: [...branchFields, ...sharedAttrFields],
+      compositor: "none",
+      choiceGroups: {},
+      abstract: false,
+      mixed: ct.mixed,
+    };
+    members.push(variantNode);
+
+    // Accumulate for metaNode
+    for (const f of branchFields) {
+      if (!allMetaFields.find((x) => x.jsName === f.jsName)) {
+        const optMeta: XmlFieldMeta = { ...f.meta, choiceGroup: groupId, order: 0 };
+        allMetaFields.push({ jsName: f.jsName, node: applyAbsence(f.node, ctx), meta: optMeta });
+        allMemberNames.push(f.jsName);
+      }
+    }
+  }
+  allChoiceGroups[groupId] = allMemberNames;
+
+  const unionNode: UnionNode = {
+    kind: "union",
+    members,
+  };
+  const metaNode: ObjectNode = {
+    kind: "object",
+    fields: [...allMetaFields, ...sharedAttrFields],
+    compositor: "choice",
+    choiceGroups: allChoiceGroups,
+    abstract: ct.abstract,
+    mixed: ct.mixed,
+  };
+  return { unionNode, metaNode };
+}
+
 function transformComplexType(
   ct: XsdComplexType,
   ctx: Context,
@@ -277,22 +366,35 @@ function transformComplexType(
     };
   }
 
+  // xs:complexContent/xs:restriction — treat as standalone object (not extending base)
+  if (ct.restriction) {
+    const rest = ct.restriction;
+    const { fields, choiceGroups } = transformChildren(rest.children, rest.compositor, ctx, xsdPath);
+    const attrFields = transformAttributes([...ct.attributes, ...rest.attributes], ctx, xsdPath);
+    const attrGroupRefs = [
+      ...(ct.attributeGroupRefs ?? []),
+      ...(rest.attributeGroupRefs ?? []),
+    ];
+    const attrGroupFields = attrGroupRefs.flatMap((ref) => expandAttributeGroup(ref, ctx, xsdPath));
+    const anyFields = buildAnyFields(ct, ctx);
+    return {
+      kind: "object",
+      fields: [...fields, ...attrFields, ...attrGroupFields, ...anyFields],
+      compositor: rest.compositor,
+      choiceGroups,
+      abstract: ct.abstract,
+      mixed: ct.mixed,
+    };
+  }
+
   // Extension (xs:complexContent / xs:extension)
   const extendsName = ct.extension?.base
     ? `${stripPrefix(ct.extension.base)}Schema`
     : undefined;
 
   const compositor = ct.compositor;
-  const { fields, choiceGroups } = transformChildren(
-    ct.extension?.children ?? ct.children,
-    ct.extension?.compositor ?? compositor,
-    ctx,
-    xsdPath
-  );
 
   const attrFields = transformAttributes(ct.attributes, ctx, xsdPath);
-
-  // Inline xs:attributeGroup references (from the complexType level and the extension level)
   const attrGroupRefs = [
     ...(ct.attributeGroupRefs ?? []),
     ...(ct.extension?.attributeGroupRefs ?? []),
@@ -300,16 +402,44 @@ function transformComplexType(
   const attrGroupFields = attrGroupRefs.flatMap((ref) =>
     expandAttributeGroup(ref, ctx, xsdPath)
   );
+  const anyFields = buildAnyFields(ct, ctx);
+
+  const { fields, choiceGroups } = transformChildren(
+    ct.extension?.children ?? ct.children,
+    ct.extension?.compositor ?? compositor,
+    ctx,
+    xsdPath
+  );
 
   return {
     kind: "object",
     ...(extendsName && { extends: extendsName }),
-    fields: [...fields, ...attrFields, ...attrGroupFields],
+    fields: [...fields, ...attrFields, ...attrGroupFields, ...anyFields],
     compositor,
     choiceGroups,
     abstract: ct.abstract,
     mixed: ct.mixed,
   };
+}
+
+/** Build $any / $anyAttr fields if the complex type has xs:any / xs:anyAttribute */
+function buildAnyFields(ct: XsdComplexType, _ctx: Context): ObjectField[] {
+  const fields: ObjectField[] = [];
+  if (ct.hasAny) {
+    fields.push({
+      jsName: "$any",
+      node: { kind: "primitive", zodExpr: "z.unknown()", optional: true },
+      meta: { kind: "element", xmlName: "#any" },
+    });
+  }
+  if (ct.hasAnyAttribute) {
+    fields.push({
+      jsName: "$anyAttr",
+      node: { kind: "primitive", zodExpr: "z.record(z.string(), z.unknown())", optional: true },
+      meta: { kind: "attribute", xmlName: "#anyAttribute" },
+    });
+  }
+  return fields;
 }
 
 function transformAttributes(
@@ -427,7 +557,32 @@ function transformChoice(
 
   for (const branch of choice.branches) {
     if ("kind" in branch && branch.kind === "group") {
-      warn(ctx, "UNSUPPORTED_CONSTRUCT", "xs:group in xs:choice not yet supported", xsdPath);
+      // Inline xs:group members into the choice as optional fields
+      const local = stripPrefix(branch.ref);
+      const group = ctx.groupIndex.get(local);
+      if (!group) {
+        warn(ctx, "UNSUPPORTED_CONSTRUCT", `xs:group "${branch.ref}" not found`, xsdPath);
+        continue;
+      }
+      const inner = transformChildren(group.children, group.compositor, ctx, xsdPath);
+      for (const f of inner.fields) {
+        const optionalNode = applyAbsence(f.node, ctx);
+        const meta: XmlFieldMeta = { ...f.meta, choiceGroup: groupId, order: orderSlot };
+        fields.push({ jsName: f.jsName, node: optionalNode, meta });
+        memberNames.push(f.jsName);
+      }
+      continue;
+    }
+    if ("kind" in branch && branch.kind === "sequence") {
+      // xs:sequence inside xs:choice — treat its children as optional choice members
+      const seqBranch = branch as XsdSequenceBranch;
+      const inner = transformChildren(seqBranch.children, "sequence", ctx, xsdPath);
+      for (const f of inner.fields) {
+        const optionalNode = applyAbsence(f.node, ctx);
+        const meta: XmlFieldMeta = { ...f.meta, choiceGroup: groupId, order: orderSlot };
+        fields.push({ jsName: f.jsName, node: optionalNode, meta });
+        memberNames.push(f.jsName);
+      }
       continue;
     }
     if ("branches" in branch) {
@@ -590,10 +745,46 @@ export function transform(
   for (const ct of schema.complexTypes) {
     if (!ct.name) continue;
     ctx.inProgress.add(ct.name);
-    const node = ctx.cache.get(ct.name) ?? transformComplexType(ct, ctx, ct.name);
+
+    let node: SchemaNode;
+    let metaNode: ObjectNode | undefined;
+
+    // Top-level choice without extension → emit z.union of per-branch ObjectNodes
+    const isTopLevelChoice =
+      ct.compositor === "choice" &&
+      !ct.extension &&
+      !ct.simpleContent &&
+      !ct.restriction &&
+      ct.children.length === 1 &&
+      ct.children[0] !== undefined &&
+      "branches" in ct.children[0];
+
+    if (isTopLevelChoice) {
+      const ctName = ct.name!;
+      const attrFields = transformAttributes(ct.attributes, ctx, ctName);
+      const attrGroupFields = (ct.attributeGroupRefs ?? []).flatMap((ref) =>
+        expandAttributeGroup(ref, ctx, ctName)
+      );
+      const anyFields = buildAnyFields(ct, ctx);
+      const sharedAttrFields = [...attrFields, ...attrGroupFields, ...anyFields];
+      const result = transformTopLevelChoice(
+        ct,
+        ct.children[0] as XsdChoice,
+        sharedAttrFields,
+        ctx,
+        ct.name
+      );
+      node = result.unionNode;
+      metaNode = result.metaNode;
+    } else {
+      node = ctx.cache.get(ct.name) ?? transformComplexType(ct, ctx, ct.name);
+    }
+
     ctx.inProgress.delete(ct.name);
     ctx.cache.set(ct.name, node);
-    declarations.push({ jsName: `${ct.name}Schema`, xmlName: ct.name, node });
+    const decl: Declaration = { jsName: `${ct.name}Schema`, xmlName: ct.name, node };
+    if (metaNode !== undefined) decl.metaNode = metaNode;
+    declarations.push(decl);
   }
 
   // Named simple types

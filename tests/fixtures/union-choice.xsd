@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+
+  <!-- Top-level choice type: should emit z.union([...]) -->
+  <xs:complexType name="Payment">
+    <xs:choice>
+      <xs:element name="creditCard" type="xs:string"/>
+      <xs:element name="bankTransfer" type="xs:string"/>
+      <xs:element name="cash" type="xs:decimal"/>
+    </xs:choice>
+  </xs:complexType>
+
+  <!-- Top-level choice with attributes shared across all branches -->
+  <xs:complexType name="ShapeUnion">
+    <xs:choice>
+      <xs:element name="circle" type="xs:string"/>
+      <xs:element name="rectangle" type="xs:string"/>
+    </xs:choice>
+    <xs:attribute name="color" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <!-- Top-level choice with sequence branches -->
+  <xs:complexType name="Event">
+    <xs:choice>
+      <xs:sequence>
+        <xs:element name="startDate" type="xs:string"/>
+        <xs:element name="endDate" type="xs:string"/>
+      </xs:sequence>
+      <xs:element name="singleDay" type="xs:string"/>
+    </xs:choice>
+  </xs:complexType>
+
+</xs:schema>

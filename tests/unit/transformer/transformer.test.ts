@@ -401,4 +401,223 @@ describe("transformer", () => {
       }
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Phase 3 features
+  // -------------------------------------------------------------------------
+
+  describe("xs:group inside xs:choice", () => {
+    it("inlines group members as optional choice fields (no UNSUPPORTED_CONSTRUCT)", () => {
+      const xsd = wrap(`
+        <xs:group name="NameGroup">
+          <xs:sequence>
+            <xs:element name="first" type="xs:string"/>
+            <xs:element name="last"  type="xs:string"/>
+          </xs:sequence>
+        </xs:group>
+        <xs:complexType name="T">
+          <xs:sequence>
+            <xs:choice>
+              <xs:group ref="NameGroup"/>
+              <xs:element name="alias" type="xs:string"/>
+            </xs:choice>
+          </xs:sequence>
+        </xs:complexType>
+      `);
+      const { declarations, warnings } = run(xsd);
+      expect(warnings.filter((w) => w.code === "UNSUPPORTED_CONSTRUCT")).toHaveLength(0);
+      const decl = declarations.find((d) => d.jsName === "TSchema");
+      expect(decl).toBeDefined();
+      if (decl!.node.kind === "object") {
+        const names = decl!.node.fields.map((f) => f.jsName);
+        expect(names).toContain("first");
+        expect(names).toContain("last");
+        expect(names).toContain("alias");
+        // All are optional (choice members)
+        expect(decl!.node.fields.find((f) => f.jsName === "first")!.node.optional).toBe(true);
+      }
+    });
+  });
+
+  describe("xs:sequence inside xs:choice", () => {
+    it("flattens sequence branch children into choice as optional fields", () => {
+      const xsd = wrap(`
+        <xs:complexType name="T">
+          <xs:sequence>
+            <xs:choice>
+              <xs:sequence>
+                <xs:element name="startDate" type="xs:string"/>
+                <xs:element name="endDate"   type="xs:string"/>
+              </xs:sequence>
+              <xs:element name="singleDay" type="xs:string"/>
+            </xs:choice>
+          </xs:sequence>
+        </xs:complexType>
+      `);
+      const { declarations, warnings } = run(xsd);
+      expect(warnings.filter((w) => w.code === "UNSUPPORTED_CONSTRUCT")).toHaveLength(0);
+      const decl = declarations.find((d) => d.jsName === "TSchema");
+      if (decl!.node.kind === "object") {
+        const names = decl!.node.fields.map((f) => f.jsName);
+        expect(names).toContain("startDate");
+        expect(names).toContain("endDate");
+        expect(names).toContain("singleDay");
+        expect(decl!.node.fields.find((f) => f.jsName === "startDate")!.node.optional).toBe(true);
+      }
+    });
+  });
+
+  describe("xs:choice as z.union (top-level compositor)", () => {
+    it("emits a UnionNode for a top-level choice complexType", () => {
+      const xsd = wrap(`
+        <xs:complexType name="Payment">
+          <xs:choice>
+            <xs:element name="creditCard" type="xs:string"/>
+            <xs:element name="cash"       type="xs:decimal"/>
+          </xs:choice>
+        </xs:complexType>
+      `);
+      const { declarations } = run(xsd);
+      const decl = declarations.find((d) => d.jsName === "PaymentSchema");
+      expect(decl).toBeDefined();
+      expect(decl!.node.kind).toBe("union");
+    });
+
+    it("each union member is an ObjectNode with exactly one branch field", () => {
+      const xsd = wrap(`
+        <xs:complexType name="Shape">
+          <xs:choice>
+            <xs:element name="circle"    type="xs:string"/>
+            <xs:element name="rectangle" type="xs:string"/>
+          </xs:choice>
+        </xs:complexType>
+      `);
+      const { declarations } = run(xsd);
+      const decl = declarations.find((d) => d.jsName === "ShapeSchema");
+      if (decl!.node.kind === "union") {
+        expect(decl!.node.members).toHaveLength(2);
+        const [m1, m2] = decl!.node.members;
+        expect(m1!.kind).toBe("object");
+        expect(m2!.kind).toBe("object");
+        if (m1!.kind === "object") expect(m1!.fields[0]!.jsName).toBe("circle");
+        if (m2!.kind === "object") expect(m2!.fields[0]!.jsName).toBe("rectangle");
+      }
+    });
+
+    it("stores metaNode on the declaration for XmlMeta emission", () => {
+      const xsd = wrap(`
+        <xs:complexType name="Payment">
+          <xs:choice>
+            <xs:element name="creditCard" type="xs:string"/>
+            <xs:element name="cash"       type="xs:decimal"/>
+          </xs:choice>
+        </xs:complexType>
+      `);
+      const { declarations } = run(xsd);
+      const decl = declarations.find((d) => d.jsName === "PaymentSchema");
+      expect(decl!.metaNode).toBeDefined();
+      expect(decl!.metaNode!.kind).toBe("object");
+      expect(decl!.metaNode!.compositor).toBe("choice");
+    });
+
+    it("includes shared attributes in every union member", () => {
+      const xsd = wrap(`
+        <xs:complexType name="Shape">
+          <xs:choice>
+            <xs:element name="circle"    type="xs:string"/>
+            <xs:element name="rectangle" type="xs:string"/>
+          </xs:choice>
+          <xs:attribute name="color" type="xs:string"/>
+        </xs:complexType>
+      `);
+      const { declarations } = run(xsd);
+      const decl = declarations.find((d) => d.jsName === "ShapeSchema");
+      if (decl!.node.kind === "union") {
+        for (const member of decl!.node.members) {
+          if (member.kind === "object") {
+            expect(member.fields.find((f) => f.jsName === "color")).toBeDefined();
+          }
+        }
+      }
+    });
+  });
+
+  describe("xs:any / xs:anyAttribute", () => {
+    it("emits $any field with z.unknown() for xs:any", () => {
+      const xsd = wrap(`
+        <xs:complexType name="Envelope">
+          <xs:sequence>
+            <xs:element name="header" type="xs:string"/>
+            <xs:any namespace="##any" minOccurs="0"/>
+          </xs:sequence>
+        </xs:complexType>
+      `);
+      const { declarations } = run(xsd);
+      const decl = declarations.find((d) => d.jsName === "EnvelopeSchema");
+      if (decl!.node.kind === "object") {
+        const anyField = decl!.node.fields.find((f) => f.jsName === "$any");
+        expect(anyField).toBeDefined();
+        expect(anyField!.node.kind).toBe("primitive");
+        if (anyField!.node.kind === "primitive") {
+          expect(anyField!.node.zodExpr).toBe("z.unknown()");
+        }
+        expect(anyField!.meta.xmlName).toBe("#any");
+      }
+    });
+
+    it("emits $anyAttr field with z.record for xs:anyAttribute", () => {
+      const xsd = wrap(`
+        <xs:complexType name="ExtRecord">
+          <xs:sequence>
+            <xs:element name="value" type="xs:string"/>
+          </xs:sequence>
+          <xs:anyAttribute/>
+        </xs:complexType>
+      `);
+      const { declarations } = run(xsd);
+      const decl = declarations.find((d) => d.jsName === "ExtRecordSchema");
+      if (decl!.node.kind === "object") {
+        const attrField = decl!.node.fields.find((f) => f.jsName === "$anyAttr");
+        expect(attrField).toBeDefined();
+        expect(attrField!.meta.xmlName).toBe("#anyAttribute");
+        expect(attrField!.meta.kind).toBe("attribute");
+      }
+    });
+  });
+
+  describe("xs:complexContent/xs:restriction", () => {
+    it("emits a standalone ObjectNode for xs:restriction (not extending base)", () => {
+      const xsd = wrap(`
+        <xs:complexType name="Address">
+          <xs:sequence>
+            <xs:element name="street"  type="xs:string"/>
+            <xs:element name="city"    type="xs:string"/>
+            <xs:element name="country" type="xs:string"/>
+          </xs:sequence>
+        </xs:complexType>
+        <xs:complexType name="DomesticAddress">
+          <xs:complexContent>
+            <xs:restriction base="Address">
+              <xs:sequence>
+                <xs:element name="street" type="xs:string"/>
+                <xs:element name="city"   type="xs:string"/>
+              </xs:sequence>
+            </xs:restriction>
+          </xs:complexContent>
+        </xs:complexType>
+      `);
+      const { declarations } = run(xsd);
+      const decl = declarations.find((d) => d.jsName === "DomesticAddressSchema");
+      expect(decl).toBeDefined();
+      expect(decl!.node.kind).toBe("object");
+      if (decl!.node.kind === "object") {
+        // No extends — restriction is standalone
+        expect(decl!.node.extends).toBeUndefined();
+        const names = decl!.node.fields.map((f) => f.jsName);
+        expect(names).toContain("street");
+        expect(names).toContain("city");
+        expect(names).not.toContain("country");
+      }
+    });
+  });
 });

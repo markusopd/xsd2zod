@@ -84,7 +84,8 @@ export type WarningCode =
   | "PRECISION_LOSS"        // numeric type mapped with longStrategy=number
   | "ABSTRACT_TYPE"         // abstract type emitted as its base type
   | "CIRCULAR_REF"          // z.lazy emitted; explicit type annotation required
-  | "UNRESOLVED_TYPE_REF";  // type reference could not be resolved (emits z.unknown())
+  | "UNRESOLVED_TYPE_REF"   // type reference could not be resolved (emits z.unknown())
+  | "RESTRICTION_BASE";     // xs:complexContent/xs:restriction base not intersected
 
 export interface Xsd2ZodWarning {
   code: WarningCode;
