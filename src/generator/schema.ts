@@ -65,7 +65,7 @@ function emitObjectExpr(node: Extract<SchemaNode, { kind: "object" }>): string {
       `  if (${varName}.length !== 1) ctx.addIssue({ code: z.ZodIssueCode.custom, message: \`Exactly one of [${members.join(", ")}] must be present\` });`,
     ].join("\n");
   });
-  return `${base}.superRefine((data, ctx) => {\n${checks.join("\n")}\n})`;
+  return `${base}.superRefine((data: unknown, ctx: z.RefinementCtx) => {\n${checks.join("\n")}\n})`;
 }
 
 // ---------------------------------------------------------------------------

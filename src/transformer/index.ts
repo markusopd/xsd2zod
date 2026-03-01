@@ -147,7 +147,7 @@ function transformSimpleType(
       if (r.fractionDigits !== undefined) {
         checks.push(`(String(v).split('.')[1]?.length ?? 0) <= ${r.fractionDigits}`);
       }
-      expr += `.superRefine((v, c) => { if (!(${checks.join(" && ")})) c.addIssue({ code: "custom", message: "Numeric precision constraint violated" }); })`;
+      expr += `.superRefine((v: number, c: z.RefinementCtx) => { if (!(${checks.join(" && ")})) c.addIssue({ code: "custom", message: "Numeric precision constraint violated" }); })`;
     }
 
     return { kind: "primitive", zodExpr: expr };
