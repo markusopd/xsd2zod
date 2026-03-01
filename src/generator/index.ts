@@ -19,13 +19,14 @@ export function generate(declarations: Declaration[]): string {
   }
 
   for (const decl of sorted) {
+    // Top-level element declarations that simply reference a named type produce
+    // a pure ref node (const foo = FooSchema). They add no new information —
+    // the type and meta are already exported under the named type — so skip them.
+    if (decl.node.kind === "ref") continue;
+
     blocks.push(emitSchemaDeclaration(decl));
-    // Skip type alias for pure ref declarations — they are already covered by
-    // the type exported for the schema they alias.
-    if (decl.node.kind !== "ref") {
-      const typeName = decl.jsName.replace(/Schema$/, "");
-      blocks.push(`export type ${typeName} = z.infer<typeof ${decl.jsName}>;`);
-    }
+    const typeName = decl.jsName.replace(/Schema$/, "");
+    blocks.push(`export type ${typeName} = z.infer<typeof ${decl.jsName}>;`);
     if (hasMeta(decl)) {
       const metaDecl = emitMetaDeclaration(decl);
       if (metaDecl) blocks.push(metaDecl);
