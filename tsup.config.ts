@@ -10,6 +10,17 @@ export default defineConfig([
     splitting: false,
   },
   {
+    entry: {
+      serializer: "src/serializer/index.ts",
+      "meta-types": "src/meta-types.ts",
+    },
+    format: ["esm", "cjs"],
+    dts: true,
+    clean: false,
+    sourcemap: true,
+    splitting: false,
+  },
+  {
     entry: { cli: "src/cli.ts" },
     format: ["esm"],
     dts: false,

@@ -14,6 +14,16 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
+    },
+    "./serializer": {
+      "types": "./dist/serializer.d.ts",
+      "import": "./dist/serializer.js",
+      "require": "./dist/serializer.cjs"
+    },
+    "./meta-types": {
+      "types": "./dist/meta-types.d.ts",
+      "import": "./dist/meta-types.js",
+      "require": "./dist/meta-types.cjs"
     }
   },
   "files": [

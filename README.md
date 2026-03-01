@@ -46,8 +46,15 @@ const person = PersonSchema.parse({
 
 ### Serialize back to XML
 
+`objectToXml` is also available as a standalone browser-safe subpath import with no Node.js dependencies:
+
 ```ts
+// Node.js — import from the main entry
 import { objectToXml } from "xsd2zod";
+
+// Browser / client-side — use the subpath (no fs/promises dependency)
+import { objectToXml } from "xsd2zod/serializer";
+
 import { PersonMeta } from "./output.js";
 
 const xml = objectToXml(person, PersonMeta, { indent: "  " });
