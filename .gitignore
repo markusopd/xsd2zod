@@ -4,3 +4,4 @@ coverage/
 *.tsbuildinfo
 test_xsd.xsd
 out.zod.ts
+plan.md
