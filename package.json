@@ -21,6 +21,7 @@
   ],
   "scripts": {
     "build": "tsup",
+    "prepare": "tsup",
     "dev": "vitest watch",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
