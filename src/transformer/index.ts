@@ -629,10 +629,15 @@ function transformElement(
 
   const coreNode = elementSchemaNode(el, ctx, elementPath);
 
-  // Detect reference to a named complex type for nestedMeta emission
+  // Detect reference to a named complex type for nestedMeta emission.
+  // Only complex types generate a *Meta const; simple types (enums,
+  // restrictions) do not, so we must not emit nestedMeta for them.
   const xmlTypeName =
     coreNode.kind === "ref"
-      ? coreNode.ref.replace(/Schema$/, "")
+      ? (() => {
+          const local = coreNode.ref.replace(/Schema$/, "");
+          return ctx.typeIndex.get(local)?.kind === "complex" ? local : undefined;
+        })()
       : undefined;
 
   // Cardinality
