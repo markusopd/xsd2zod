@@ -139,15 +139,30 @@ function transformSimpleType(
     }
 
     if (r.totalDigits !== undefined || r.fractionDigits !== undefined) {
-      // These can't be expressed cleanly; emit as superRefine
+      // These can't be expressed cleanly; emit as superRefine.
+      // Detect bigint base to emit the correct parameter type.
+      const isBigint = baseExpr.startsWith("z.bigint()");
       const checks: string[] = [];
-      if (r.totalDigits !== undefined) {
-        checks.push(`String(Math.abs(v)).replace('.','').replace(/^0+/,'').length <= ${r.totalDigits}`);
+      if (isBigint) {
+        if (r.totalDigits !== undefined) {
+          checks.push(`String(v < 0n ? -v : v).replace(/^0+/, "").length <= ${r.totalDigits}`);
+        }
+        // fractionDigits on bigint is always 0 — skip if constraint is >= 0
+        if (r.fractionDigits !== undefined && r.fractionDigits < 0) {
+          checks.push("false"); // impossible constraint
+        }
+        if (checks.length > 0) {
+          expr += `.superRefine((v: bigint, c: z.RefinementCtx) => { if (!(${checks.join(" && ")})) c.addIssue({ code: "custom", message: "Numeric precision constraint violated" }); })`;
+        }
+      } else {
+        if (r.totalDigits !== undefined) {
+          checks.push(`String(Math.abs(v)).replace('.','').replace(/^0+/,'').length <= ${r.totalDigits}`);
+        }
+        if (r.fractionDigits !== undefined) {
+          checks.push(`(String(v).split('.')[1]?.length ?? 0) <= ${r.fractionDigits}`);
+        }
+        expr += `.superRefine((v: number, c: z.RefinementCtx) => { if (!(${checks.join(" && ")})) c.addIssue({ code: "custom", message: "Numeric precision constraint violated" }); })`;
       }
-      if (r.fractionDigits !== undefined) {
-        checks.push(`(String(v).split('.')[1]?.length ?? 0) <= ${r.fractionDigits}`);
-      }
-      expr += `.superRefine((v: number, c: z.RefinementCtx) => { if (!(${checks.join(" && ")})) c.addIssue({ code: "custom", message: "Numeric precision constraint violated" }); })`;
     }
 
     return { kind: "primitive", zodExpr: expr };
