@@ -2,5 +2,5 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
-naeringsspesifikasjon_v6_kompakt_ekstern.xsd
+test_xsd.xsd
 out.zod.ts
