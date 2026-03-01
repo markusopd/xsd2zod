@@ -83,6 +83,7 @@ function serializeObject(
     const jsName = findJsName(meta, fm);
     const raw = obj[jsName];
     if (raw === undefined || raw === null) continue;
+    if (typeof raw === "object") continue; // skip non-primitive attribute values
     attrStr += ` ${fm.xmlName}="${escapeAttr(String(raw))}"`;
   }
 
@@ -111,7 +112,7 @@ function serializeObject(
 
     if (fm.kind === "text") {
       // simpleContent $text field
-      if (raw !== undefined && raw !== null) {
+      if (raw !== undefined && raw !== null && typeof raw !== "object") {
         textContent = escapeText(String(raw));
       }
       continue;
@@ -125,7 +126,7 @@ function serializeObject(
       continue;
     }
 
-    if (fm.isArray && Array.isArray(raw)) {
+    if (Array.isArray(raw)) {
       for (const item of raw) {
         serializeField(item, fm, options, childLines, depth + 1);
       }
@@ -157,7 +158,14 @@ function serializeField(
 ): void {
   if (value === null || value === undefined) return;
 
-  if (typeof value === "object" && !Array.isArray(value)) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      serializeField(item, fm, options, out, depth);
+    }
+    return;
+  }
+
+  if (typeof value === "object") {
     if (fm.nestedMeta) {
       serializeObject(value, fm.nestedMeta, fm.xmlName, options, out, depth);
     }
