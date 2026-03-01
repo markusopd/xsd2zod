@@ -157,8 +157,11 @@ function serializeField(
 ): void {
   if (value === null || value === undefined) return;
 
-  if (fm.nestedMeta && typeof value === "object" && !Array.isArray(value)) {
-    serializeObject(value, fm.nestedMeta, fm.xmlName, options, out, depth);
+  if (typeof value === "object" && !Array.isArray(value)) {
+    if (fm.nestedMeta) {
+      serializeObject(value, fm.nestedMeta, fm.xmlName, options, out, depth);
+    }
+    // Object with no nestedMeta: emit a self-closing tag rather than [object Object]
     return;
   }
 

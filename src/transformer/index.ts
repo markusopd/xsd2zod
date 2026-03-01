@@ -618,6 +618,15 @@ function transformChoice(
     const elementNode = elementSchemaNode(el, ctx, xsdPath);
     const optionalNode = applyAbsence(elementNode, ctx);
 
+    // Detect reference to a named complex type (same logic as transformElement)
+    const xmlTypeName =
+      elementNode.kind === "ref"
+        ? (() => {
+            const local = elementNode.ref.replace(/Schema$/, "");
+            return ctx.typeIndex.get(local)?.kind === "complex" ? local : undefined;
+          })()
+        : undefined;
+
     const meta: XmlFieldMeta = {
       kind: "element",
       xmlName: el.name,
@@ -626,6 +635,7 @@ function transformChoice(
       ...(el.nillable && { nillable: true }),
       ...(el.default !== undefined && { default: el.default }),
       ...(el.fixed !== undefined && { fixed: el.fixed }),
+      ...(xmlTypeName !== undefined && { xmlTypeName }),
     };
     fields.push({ jsName, node: optionalNode, meta });
   }
